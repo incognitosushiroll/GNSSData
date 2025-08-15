@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GNSData</string>
+
+    <string name="title_baro">Barometer (hPa)</string>
+    <string name="title_accel">Accelerometer (m/s²)</string>
+    <string name="title_gyro">Gyroscope (rad/s)</string>
+    <string name="title_gnss">GNSS (Pseudorange &amp; TDCP)</string>
+
+    <string name="no_baro">No barometer on this device (emulators usually lack one).</string>
+    <string name="waiting_sensor">Waiting for sensor…</string>
+    <string name="perm_needed">Location permission required for GNSS.</string>
+    <string name="gnss_waiting">Waiting for satellites…</string>
+</resources>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- BAROMETER -->
+        <TextView
+            android:id="@+id/label_baro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/title_baro"
+            android:textStyle="bold"
+            android:textSize="18sp"/>
+
+        <TextView
+            android:id="@+id/value_baro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/waiting_sensor"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- ACCELEROMETER -->
+        <TextView
+            android:id="@+id/label_accel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/title_accel"
+            android:textStyle="bold"
+            android:textSize="18sp"/>
+
+        <TextView
+            android:id="@+id/value_accel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/waiting_sensor"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- GYROSCOPE -->
+        <TextView
+            android:id="@+id/label_gyro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/title_gyro"
+            android:textStyle="bold"
+            android:textSize="18sp"/>
+
+        <TextView
+            android:id="@+id/value_gyro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/waiting_sensor"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- GNSS -->
+        <TextView
+            android:id="@+id/label_gnss"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/title_gnss"
+            android:textStyle="bold"
+            android:textSize="18sp"/>
+
+        <TextView
+            android:id="@+id/value_gnss"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/gnss_waiting"
+            android:textSize="16sp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- status/footer -->
+        <TextView
+            android:id="@+id/value_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="14sp"/>
+    </LinearLayout>
+</ScrollView>
