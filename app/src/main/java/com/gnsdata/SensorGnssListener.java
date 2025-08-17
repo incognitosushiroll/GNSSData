@@ -63,6 +63,10 @@ public class SensorGnssListener implements SensorEventListener {
         void onGyro(float gx, float gy, float gz, long tElapsedNs);
         void onGnssEpoch(String multiLineText, long tElapsedNs);
         void onStatus(String statusText);
+
+        void onGnssPrTdcp(int constellation, int svid, double prMeters,
+                          Double tdcpDeltaMeters, Double tdcpRateMps, long tElapsedNs);
+        // Note: that when ADR isn't available yet, we pass null (Doubles are nullable)
     }
     private final Sink sink;
 
@@ -190,6 +194,7 @@ public class SensorGnssListener implements SensorEventListener {
 
                 // TDCP using ADR differencing (only when ADR_STATE_VALID)
                 String tdcpTxt = "—";
+                Double tdcpDelta = null, tdcpRate = null;
                 if ((m.getAccumulatedDeltaRangeState()
                         & android.location.GnssMeasurement.ADR_STATE_VALID) != 0) {
                     final double adrNow = m.getAccumulatedDeltaRangeMeters();
@@ -201,11 +206,15 @@ public class SensorGnssListener implements SensorEventListener {
                             final double dMeters = adrNow - lastA;             // Δrange over epoch (m)
                             final double rateMps = dMeters / (dtNs * 1e-9);    // optional rate (m/s)
                             tdcpTxt = String.format(Locale.US, "Δ=%.3f m  rate=%.3f m/s", dMeters, rateMps);
+                            // Set tdcpDelta and tdcpRate equal to dMeters and rateMps for logging
+                            tdcpDelta = dMeters;
+                            tdcpRate = rateMps;
                         }
                     }
                     // Update state for this SV
                     lastAdrEpochNs.put(svid, tRxNanos);
                     lastAdrMeters.put(svid, adrNow);
+
                 } else {
                     // ADR invalid/reset so clear state
                     lastAdrEpochNs.remove(svid);
@@ -217,10 +226,14 @@ public class SensorGnssListener implements SensorEventListener {
                 // For testing:
                     // ui.append(String.format(Locale.US,
                            // "TDCP=%s\n", tdcpTxt));
+                sink.onGnssPrTdcp(constel, svid, prMeters, tdcpDelta, tdcpRate, tElapsedNs);
             }
 
             final String uiText = ui.length() == 0 ? "No raw GNSS this epoch" : ui.toString();
+
+
             sink.onGnssEpoch(uiText, tElapsedNs);
+
         }
 
         @Override public void onStatusChanged(int status) { /* optional, tbd */ }

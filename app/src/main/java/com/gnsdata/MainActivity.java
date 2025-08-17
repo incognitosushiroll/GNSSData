@@ -68,6 +68,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import androidx.core.content.FileProvider;
+import android.content.Intent;
+import android.net.Uri;
+
 import java.util.Locale;
 
 
@@ -82,6 +86,13 @@ public class MainActivity extends AppCompatActivity {
 
     //Our listener created from SensorGnssListener.java
     private SensorGnssListener listener;
+    // Our logger created from SheetLogger.java
+    private SheetLogger sheetLogger;
+
+    // last-known values so we can write a *wide*, fully populated row each time
+    private Float lastBaro = null;
+    private Float lastAx = null, lastAy = null, lastAz = null;
+    private Float lastGx = null, lastGy = null, lastGz = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,29 +110,68 @@ public class MainActivity extends AppCompatActivity {
         listener = new SensorGnssListener(getApplicationContext(), new SensorGnssListener.Sink() {
             @Override
             public void onBarometer(float hPa, long tElapsedNs) {
-                // UI note: use Locale for consistent decimal formatting
                 tvBaro.setText(String.format(Locale.US, "%.2f hPa", hPa));
+                lastBaro = hPa;
+
+                long now = System.currentTimeMillis();
+                if (sheetLogger != null) {
+                    // Write one WIDE row every time a sensor updates (sample-and-hold for others)
+                    sheetLogger.logSensorsWide(now, tElapsedNs,
+                            lastBaro,
+                            lastAx, lastAy, lastAz,
+                            lastGx, lastGy, lastGz);
+                }
             }
 
             @Override
             public void onAccel(float ax, float ay, float az, long tElapsedNs) {
                 tvAccel.setText(String.format(Locale.US, "x=%.2f  y=%.2f  z=%.2f m/s²", ax, ay, az));
+                lastAx = ax; lastAy = ay; lastAz = az;
+
+                long now = System.currentTimeMillis();
+                if (sheetLogger != null) {
+                    sheetLogger.logSensorsWide(now, tElapsedNs,
+                            lastBaro,
+                            lastAx, lastAy, lastAz,
+                            lastGx, lastGy, lastGz);
+                }
             }
 
             @Override
             public void onGyro(float gx, float gy, float gz, long tElapsedNs) {
                 tvGyro.setText(String.format(Locale.US, "x=%.3f  y=%.3f  z=%.3f rad/s", gx, gy, gz));
+                lastGx = gx; lastGy = gy; lastGz = gz;
+
+                long now = System.currentTimeMillis();
+                if (sheetLogger != null) {
+                    sheetLogger.logSensorsWide(now, tElapsedNs,
+                            lastBaro,
+                            lastAx, lastAy, lastAz,
+                            lastGx, lastGy, lastGz);
+                }
+            }
+
+            @Override
+            public void onGnssPrTdcp(int constellation, int svid, double prMeters,
+                                     Double tdcpDeltaMeters, Double tdcpRateMps, long tElapsedNs) {
+                long now = System.currentTimeMillis();
+                if (sheetLogger != null) {
+                    sheetLogger.logGnssPerSv(now, tElapsedNs, constellation, svid,
+                            prMeters, tdcpDeltaMeters, tdcpRateMps);
+                }
             }
 
             @Override
             public void onGnssEpoch(String multiLineText, long tElapsedNs) {
-                tvGnss.setText(multiLineText);
+                tvGnss.setText(multiLineText); // UI only; logging is per-SV above
             }
 
             @Override
             public void onStatus(String statusText) {
                 tvStatus.setText(statusText);
             }
+
+
         });
         //First-run helpful text based on hardware availability (emulators often lack sensors)
         tvBaro.setText(listener.hasBarometer()    ? getString(R.string.waiting_sensor) : getString(R.string.no_baro));
@@ -129,6 +179,11 @@ public class MainActivity extends AppCompatActivity {
         tvGyro.setText(listener.hasGyroscope()    ? getString(R.string.waiting_sensor) : "No gyroscope.");
         tvGnss.setText(getString(R.string.gnss_waiting));
 
+        //creating our logger and headers to write to
+        char delim = SheetLogger.defaultExcelDelimiterForLocale();
+        sheetLogger = SheetLogger.atExternal(getApplicationContext(), delim, true /*BOM*/);
+        tvStatus.setText(String.format("Sensors: %s\nGNSS: %s", sheetLogger.sensorsPath(), sheetLogger.gnssPath()));
+        sheetLogger.ensureHeaders(); // <- safe no-op if already present
         // Kick off runtime permission flow for GNSS
         ensureLocationPermission();
     }
@@ -144,6 +199,12 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onPause() {
         super.onPause();
         if (listener != null) listener.stop();
+    }
+    // Close the logger
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (sheetLogger != null) sheetLogger.close();
     }
 
     // This permission helper requests at runtime on Android 6+ if need to get permissions
@@ -183,6 +244,7 @@ public class MainActivity extends AppCompatActivity {
             if (listener != null) listener.start();
         }
     }
+
 
     // === Callback from permission dialog ===
     @Override
