@@ -26,13 +26,13 @@ import java.text.SimpleDateFormat;
 
 public class SheetLogger {
 
-    // --- public getters (so you can show/share paths in UI) ---
+    // these are public getters (so we can show/share paths in UI)
     public File sensorsFile() { return sensorsFile; }
     public File gnssFile()    { return gnssFile;    }
     public String sensorsPath() { return sensorsFile.getAbsolutePath(); }
     public String gnssPath()    { return gnssFile.getAbsolutePath();    }
 
-    // --- internals ---
+    // internal vars
     private final File sensorsFile;
     private final File gnssFile;
     private Writer sensorsWriter;
@@ -40,7 +40,7 @@ public class SheetLogger {
     private final char delimiter;
     private final boolean writeBomOnEmpty;
 
-    // Thread-safe date/time formatters (we create fresh per call; SimpleDateFormat isn’t thread-safe).
+    // Thread-safe date/time formatters (we create fresh ones per each call bc SimpleDateFormat isn’t thread-safe).
     private static String fmtDate(long wallMs) {
         return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date(wallMs));
     }
@@ -48,7 +48,7 @@ public class SheetLogger {
         return new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date(wallMs));
     }
 
-    /** Factory: put logs under app-specific *external* storage (easy to grab via Files/USB; no permission). */
+    // A Java "Factory" which put logs under app-specific *external* storage (easy to grab via Files/USB; no permission). */
     public static SheetLogger atExternal(Context ctx, char delimiter, boolean bom) {
         File base = ctx.getExternalFilesDir(null);
         File dir = new File(base, "logs");
@@ -59,13 +59,13 @@ public class SheetLogger {
                 delimiter, bom);
     }
 
-    /** Excel normally wants ';' when decimal separator is ',' — this picks for you. */
+    // Excel normally wants ';' when decimal separator is ','. So we use , or ; as delim and make it a basic "," //
     public static char defaultExcelDelimiterForLocale() {
         char decimalSep = DecimalFormatSymbols.getInstance().getDecimalSeparator();
         return (decimalSep == ',') ? ';' : ',';
     }
 
-    // Constructor: open both writers and write headers if files empty.
+    // Constructor which has open writers and will write headers if files empty.
     private SheetLogger(File sensors, File gnss, char delimiter, boolean bom) {
         this.sensorsFile = sensors;
         this.gnssFile = gnss;
@@ -77,6 +77,7 @@ public class SheetLogger {
         writeGnssHeaderIfEmpty();
     }
 
+    // Will open the parent file if it exists, or create a new parent file and then create output streams and writers
     private Writer openWriter(File file) {
         try {
             File parent = file.getParentFile();
@@ -85,19 +86,19 @@ public class SheetLogger {
             FileOutputStream fos = new FileOutputStream(file, true);
             OutputStreamWriter w = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
             if (newFile && writeBomOnEmpty) {
-                // UTF-8 BOM so Excel detects encoding (important for “m/s²” characters etc.)
+                // UTF-8 BOM (byte order map) so Excel detects encoding (important for “m/s²” characters etc.)
                 w.write('\uFEFF');
                 w.flush();
             }
             return w;
         } catch (IOException e) {
-            return null; // degrade gracefully: no crash
+            return null; // falls into a pillow of feathers
         }
     }
 
-    // ========================= SENSORS =========================
+    // SENSORS
 
-    /** Header: one-time, wide columns for sensors. */
+    // Make the header: one-time, wide columns for sensors. //
     private synchronized void writeSensorsHeaderIfEmpty() {
         if (sensorsWriter == null || !isEffectivelyEmpty(sensorsFile)) return;
         writeSensorsRowRaw(
@@ -108,10 +109,7 @@ public class SheetLogger {
         );
     }
 
-    /**
-     * Write one *wide* sensor row.
-     * Any null value → blank cell (so columns stay aligned, and Excel shows empty).
-     */
+    // Write one VERY wide sensor row. Any null value → blank cell (so columns stay aligned, and Excel shows empty)//
     public synchronized void logSensorsWide(
             long wallMs, long elapsedNs,
             Float baro_hPa,
@@ -127,13 +125,14 @@ public class SheetLogger {
         );
     }
 
+    // Uses the function in the GNSS section to write the sensors row
     private void writeSensorsRowRaw(Object... fields) {
         writeRow(sensorsWriter, fields);
     }
 
-    // =========================== GNSS ==========================
+    // GNSS
 
-    /** Header for GNSS per-satellite rows. */
+    // Header for GNSS per-satellite rows. //
     private synchronized void writeGnssHeaderIfEmpty() {
         if (gnssWriter == null || !isEffectivelyEmpty(gnssFile)) return;
         writeGnssRowRaw(
@@ -143,10 +142,7 @@ public class SheetLogger {
         );
     }
 
-    /**
-     * GNSS row per satellite per epoch.
-     * tdcpMeters / tdcpRate may be null (when ADR not valid yet) → blank cells.
-     */
+    // GNSS row per satellite per epoch. If tdcpMeters / tdcpRate are null (when ADR not valid yet) we write blank cells.
     public synchronized void logGnssPerSv(
             long wallMs, long elapsedNs,
             int constellation, int svid,
@@ -161,11 +157,12 @@ public class SheetLogger {
         );
     }
 
+    // Same as Sensor fx above
     private void writeGnssRowRaw(Object... fields) {
         writeRow(gnssWriter, fields);
     }
 
-    // ======================= CSV glue =========================
+    // CSV glue! All the familiar functions to make logs with different data
 
     private void writeRow(Writer w, Object... fields) {
         if (w == null) return;
@@ -179,7 +176,7 @@ public class SheetLogger {
         } catch (IOException ignored) {}
     }
 
-    /** Convert Java object → CSV cell; numbers use Locale.US to ensure '.' decimal point. Null → blank. */
+    // Convert Java object into a CSV cell; numbers use Locale.US to ensure '.' decimal point. If Null, leave blank
     private String escapeCsvField(Object v) {
         if (v == null) return "";
         String s;
@@ -199,6 +196,8 @@ public class SheetLogger {
         // If we chose to write a BOM, a just-created file will be 3 bytes long.
         return len == 0 || (writeBomOnEmpty && len <= 3);
     }
+
+    // Ran into some issues with headers not appearing, this was added to push them on
     public synchronized void ensureHeaders() {
         writeSensorsHeaderIfEmpty();
         writeGnssHeaderIfEmpty();
@@ -206,6 +205,7 @@ public class SheetLogger {
     private static String toCsv(Float f)  { return f == null ? "" : String.format(Locale.US, "%.6f", f); }
     private static String toCsv(Double d) { return d == null ? "" : String.format(Locale.US, "%.9f", d); }
 
+    // And we take a bow
     public synchronized void close() {
         try { if (sensorsWriter != null) sensorsWriter.close(); } catch (IOException ignored) {}
         try { if (gnssWriter    != null) gnssWriter.close();    } catch (IOException ignored) {}

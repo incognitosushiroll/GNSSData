@@ -171,7 +171,7 @@ public class SensorGnssListener implements SensorEventListener {
     private final GnssMeasurementsEvent.Callback measCb = new GnssMeasurementsEvent.Callback() {
         @Override
         public void onGnssMeasurementsReceived(GnssMeasurementsEvent event) {
-                // Receiver time -> GPS timescale
+                // Receiver time on the device (hardware) converted to the GPS timescale
                 final GnssClock clock = event.getClock();
                 final long   tRxNanos     = clock.getTimeNanos();
                 final double fullBiasNs   = clock.hasFullBiasNanos() ? clock.getFullBiasNanos() : 0.0;
@@ -186,14 +186,29 @@ public class SensorGnssListener implements SensorEventListener {
                     final int svid    = m.getSvid();
                     final int constel = m.getConstellationType();
 
-                    // Satellite transmit time at code epoch (ns) in the constellation’s own time scale
+                    // Satellite transmit time (Tx) at code epoch in ns (will be a large number in the .csv) in the constellation’s own time scale
                     double tTxNs = m.getReceivedSvTimeNanos() + m.getTimeOffsetNanos();
 
-                    // --- Convert Tx time to GPS time scale (very important for valid pseudorange) ---
+                    // Convert tramsit time (Tx) to GPS time scale (very important for valid pseudorange)
+                    // Reference: https://web.gps.caltech.edu/classes/ge111/Docs/GPSbasics.pdf
+                        /*
+                            Tx time (t_tx) = the time the satellite transmitted the code epoch you’re measuring.
+
+                            Rx time (t_rx) = the time your receiver received that same code epoch (expressed on the GPS time scale after clock-bias correction).
+                        */
                     // GPS/QZSS/SBAS: ~0 offset → leave as-is.
                     // Galileo (GST): typically small ns-level offset → ignore here.
                     // BeiDou (BDT): GPST = BDT + 14 s  → add +14 s.
                     // GLONASS (UTC(SU) TOD): GPST = UTC + leapSeconds → add leap seconds.
+                    /* Reference: https://developer.android.com/reference/android/location/GnssStatus
+                        GPS = 1
+                        Sbas = 2
+                        Glonass = 3
+                        Qzss = 4
+                        Beidou = 5
+                        Galileo = 6
+                        IRNSS = 7
+                    */
                     double offsetToGpsNs = 0.0;
                     if (constel == android.location.GnssStatus.CONSTELLATION_BEIDOU) {
                         offsetToGpsNs = 14.0e9;  // 14 seconds
@@ -204,14 +219,14 @@ public class SensorGnssListener implements SensorEventListener {
                     }
                     double tTxGpsNs = tTxNs + offsetToGpsNs;
 
-                    // --- Choose modulo window: week for most, day for GLONASS ---
+                    // Choose the modulo window: week for most, day for GLONASS
                     double moduloNs = (constel == android.location.GnssStatus.CONSTELLATION_GLONASS) ? DAY_NS : WEEK_NS;
 
-                    // Fold both receiver and (possibly shifted) transmit times into the same modulo window
+                    // Fold both receiver and (re-calc'd) transmit times into the same modulo window
                     double tRxTow = tRxGpsNanos % moduloNs; if (tRxTow < 0) tRxTow += moduloNs;
                     double tTxTow = tTxGpsNs    % moduloNs; if (tTxTow < 0) tTxTow += moduloNs;
 
-                    // Raw difference and wrap to nearest image (handles rollover at week/day boundary)
+                    // Raw difference and wrap to nearest number to handle rollover between week and day mark
                     double dtNs = tRxTow - tTxTow;
                     if (dtNs >  0.5 * moduloNs) dtNs -= moduloNs;
                     if (dtNs < -0.5 * moduloNs) dtNs += moduloNs;
@@ -219,22 +234,23 @@ public class SensorGnssListener implements SensorEventListener {
                     // Pseudorange in meters
                     double prMeters = dtNs * 1e-9 * C_MPS;
 
-                    // Sanity gate (keep ~1,000–70,000 km)
+                    // Sanity gate for security, keep ~1,000–70,000 km
                     if (prMeters < 1.0e6 || prMeters > 7.0e7) {
-                        // Optionally: sink.onStatus("Dropped PR SV " + svid + " C=" + constel + " pr=" + (long)prMeters);
+                        // We could also sink.onStatus("Dropped PR SV " + svid + " C=" + constel + " pr=" + (long)prMeters); if the range of the PR doesn't fit beauty standards
                         continue;
                     }
 
-                    // --- TDCP via ADR differencing (if ADR valid) ---
+                    // TDCP via ADR differencing (if ADR valid) ---
                     String  tdcpTxt  = "—";
                     Double  tdcpDelta = null;
                     Double  tdcpRate  = null;
 
+                    // Getting all the state for this SV
                     if ((m.getAccumulatedDeltaRangeState()
                             & android.location.GnssMeasurement.ADR_STATE_VALID) != 0) {
                         final double adrNow = m.getAccumulatedDeltaRangeMeters();
-                        final Long   lastT  = lastAdrEpochNs.get(svid);
-                        final Double lastA  = lastAdrMeters.get(svid);
+                        final Long   lastT  = lastAdrEpochNs.get(svid); // time
+                        final Double lastA  = lastAdrMeters.get(svid); //ADR
 
                         if (lastT != null && lastA != null) {
                             long adrDtNs = tRxNanos - lastT;     // NOTE: new variable name → avoid shadowing dtNs
@@ -251,7 +267,7 @@ public class SensorGnssListener implements SensorEventListener {
                         lastAdrEpochNs.put(svid, tRxNanos);
                         lastAdrMeters.put(svid, adrNow);
                     } else {
-                        // ADR invalid / reset → clear state so next valid epoch starts fresh
+                        // If the ADR rings up invalid, then reset/clear state so next valid epoch starts fresh
                         lastAdrEpochNs.remove(svid);
                         lastAdrMeters.remove(svid);
                     }
@@ -263,7 +279,7 @@ public class SensorGnssListener implements SensorEventListener {
                     // Structured callback for logging (per-SV)
                     sink.onGnssPrTdcp(constel, svid, prMeters, tdcpDelta, tdcpRate, tElapsedNs);
                 }
-
+                // This line of uiText may appear when running the app at first, give it time to load the GNSS data
                 final String uiText = (ui.length() == 0) ? "No raw GNSS this epoch" : ui.toString();
                 sink.onGnssEpoch(uiText, tElapsedNs);
             }

@@ -47,6 +47,15 @@ FOUR Desired GPS Measurements:
             - TCDP over an epoch is ΔADR = ADR_now − ADR_prev (meters)
             - Optional rate: ΔADR / Δt (m/s), where Δt is time between epochs (seconds)
             - Only valid if ADR_STATE_VALID is set, resets on cycle slips/loss of lock
+     - For the constellation:
+        Reference: https://developer.android.com/reference/android/location/GnssStatus
+                        GPS = 1
+                        Sbas = 2
+                        Glonass = 3
+                        Qzss = 4
+                        Beidou = 5
+                        Galileo = 6
+                        IRNSS = 7
 
 Java concepts - for new programmer:
 - A java "class" (this file) extends AppCompatActivity so it can be used as a screen
@@ -276,4 +285,7 @@ References used for this project:
     - https://www.spirent.com/blogs/2011-01-25_what_is_pseudorange
     -https://www.mdpi.com/1999-4893/17/1/2 (good to look at using Doppler or TDCP-based velocity determination)
     -helpful link for understanding pseudorange: https://stackoverflow.com/questions/54904681/how-to-compute-pseudorange-from-the-parameters-fetched-via-google-gnsslogger)
+- Pseudoranges and clock-bias correction:
+    -https://web.gps.caltech.edu/classes/ge111/Docs/GPSbasics.pdf (chunky but I had ChatGPT sum up how to fix GPS constellation block bias errors in my PR calc)
+- Basic Java to csv: https://www.baeldung.com/java-csv
  */
