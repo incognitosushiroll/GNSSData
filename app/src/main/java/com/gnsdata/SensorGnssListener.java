@@ -36,6 +36,8 @@ public class SensorGnssListener implements SensorEventListener {
     // Constants, constrained at compiletime, immutable
     private static final String TAG = "GNSData-Listener";
     private static final double C_MPS = 299_792_458.0; // light speed constant
+    private static final double WEEK_NS = 604800e9; // 604,800 s * e9
+    private static final double DAY_NS = 86500e9; // 86,400 s * 1e9
 
     // Android services to handle hubs mentioned in MainActivity
     private final Context appContext; // keep an application Context that's safe beyond Activity
@@ -169,74 +171,103 @@ public class SensorGnssListener implements SensorEventListener {
     private final GnssMeasurementsEvent.Callback measCb = new GnssMeasurementsEvent.Callback() {
         @Override
         public void onGnssMeasurementsReceived(GnssMeasurementsEvent event) {
-            // Reciever time on GPS timescale: t_rx(GPS = timeNanos - (fullBaisNanos + biasNanos)
-            //clock.timeNanos is on the device (hardware's clock), not GPS time
-            // fullBiasNanos and biasNanos convert device timescale to GPS timescale
-            final GnssClock clock = event.getClock();
-            final long tRxNanos = clock.getTimeNanos();
-            final double fullBias = clock.hasFullBiasNanos() ? clock.getFullBiasNanos() : 0.0;
-            final double bias = clock.hasBiasNanos() ? clock.getBiasNanos() : 0.0;
-            final double tRxGpsNanos = tRxNanos - (fullBias + bias);
+                // Receiver time -> GPS timescale
+                final GnssClock clock = event.getClock();
+                final long   tRxNanos     = clock.getTimeNanos();
+                final double fullBiasNs   = clock.hasFullBiasNanos() ? clock.getFullBiasNanos() : 0.0;
+                final double biasNs       = clock.hasBiasNanos()     ? clock.getBiasNanos()     : 0.0;
+                final double tRxGpsNanos  = tRxNanos - (fullBiasNs + biasNs); // continuous GPST in ns
 
-            //Single multi-line stirng that lists each SV's PR and TDCP for this epoch
-            //ADR is carrier-phase distance in meters "since last reset". We difference it across epochs.
-            StringBuilder ui = new StringBuilder();
-            final long tElapsedNs = SystemClock.elapsedRealtimeNanos(); // align with sensors
+                // Build a multi-line UI string for this epoch
+                StringBuilder ui = new StringBuilder();
+                final long tElapsedNs = SystemClock.elapsedRealtimeNanos(); // monotonic for logging alignment
 
-            for (android.location.GnssMeasurement m : event.getMeasurements()) {
-                final int svid        = m.getSvid();
-                final int constel     = m.getConstellationType();               // GPS/GLO/GAL/BDS/…
-                final double tTxNanos = m.getReceivedSvTimeNanos()
-                        + m.getTimeOffsetNanos();                // transmit time + correction
+                for (android.location.GnssMeasurement m : event.getMeasurements()) {
+                    final int svid    = m.getSvid();
+                    final int constel = m.getConstellationType();
 
-                // Pseudorange (meters): ρ = (t_rx(GPS) − t_tx) * c
-                final double prMeters = (tRxGpsNanos - tTxNanos) * 1e-9 * C_MPS;
+                    // Satellite transmit time at code epoch (ns) in the constellation’s own time scale
+                    double tTxNs = m.getReceivedSvTimeNanos() + m.getTimeOffsetNanos();
 
-                // TDCP using ADR differencing (only when ADR_STATE_VALID)
-                String tdcpTxt = "—";
-                Double tdcpDelta = null, tdcpRate = null;
-                if ((m.getAccumulatedDeltaRangeState()
-                        & android.location.GnssMeasurement.ADR_STATE_VALID) != 0) {
-                    final double adrNow = m.getAccumulatedDeltaRangeMeters();
-                    final Long   lastT  = lastAdrEpochNs.get(svid);
-                    final Double lastA  = lastAdrMeters.get(svid);
-                    if (lastT != null && lastA != null) {
-                        final long dtNs = tRxNanos - lastT;
-                        if (dtNs > 0) {
-                            final double dMeters = adrNow - lastA;             // Δrange over epoch (m)
-                            final double rateMps = dMeters / (dtNs * 1e-9);    // optional rate (m/s)
-                            tdcpTxt = String.format(Locale.US, "Δ=%.3f m  rate=%.3f m/s", dMeters, rateMps);
-                            // Set tdcpDelta and tdcpRate equal to dMeters and rateMps for logging
-                            tdcpDelta = dMeters;
-                            tdcpRate = rateMps;
-                        }
+                    // --- Convert Tx time to GPS time scale (very important for valid pseudorange) ---
+                    // GPS/QZSS/SBAS: ~0 offset → leave as-is.
+                    // Galileo (GST): typically small ns-level offset → ignore here.
+                    // BeiDou (BDT): GPST = BDT + 14 s  → add +14 s.
+                    // GLONASS (UTC(SU) TOD): GPST = UTC + leapSeconds → add leap seconds.
+                    double offsetToGpsNs = 0.0;
+                    if (constel == android.location.GnssStatus.CONSTELLATION_BEIDOU) {
+                        offsetToGpsNs = 14.0e9;  // 14 seconds
+                    } else if (constel == android.location.GnssStatus.CONSTELLATION_GLONASS) {
+                        // If the hardware provides leap seconds, use it; otherwise fall back to 18 s (current).
+                        int leap = clock.hasLeapSecond() ? clock.getLeapSecond() : 18;
+                        offsetToGpsNs = leap * 1e9;
                     }
-                    // Update state for this SV
-                    lastAdrEpochNs.put(svid, tRxNanos);
-                    lastAdrMeters.put(svid, adrNow);
+                    double tTxGpsNs = tTxNs + offsetToGpsNs;
 
-                } else {
-                    // ADR invalid/reset so clear state
-                    lastAdrEpochNs.remove(svid);
-                    lastAdrMeters.remove(svid);
+                    // --- Choose modulo window: week for most, day for GLONASS ---
+                    double moduloNs = (constel == android.location.GnssStatus.CONSTELLATION_GLONASS) ? DAY_NS : WEEK_NS;
+
+                    // Fold both receiver and (possibly shifted) transmit times into the same modulo window
+                    double tRxTow = tRxGpsNanos % moduloNs; if (tRxTow < 0) tRxTow += moduloNs;
+                    double tTxTow = tTxGpsNs    % moduloNs; if (tTxTow < 0) tTxTow += moduloNs;
+
+                    // Raw difference and wrap to nearest image (handles rollover at week/day boundary)
+                    double dtNs = tRxTow - tTxTow;
+                    if (dtNs >  0.5 * moduloNs) dtNs -= moduloNs;
+                    if (dtNs < -0.5 * moduloNs) dtNs += moduloNs;
+
+                    // Pseudorange in meters
+                    double prMeters = dtNs * 1e-9 * C_MPS;
+
+                    // Sanity gate (keep ~1,000–70,000 km)
+                    if (prMeters < 1.0e6 || prMeters > 7.0e7) {
+                        // Optionally: sink.onStatus("Dropped PR SV " + svid + " C=" + constel + " pr=" + (long)prMeters);
+                        continue;
+                    }
+
+                    // --- TDCP via ADR differencing (if ADR valid) ---
+                    String  tdcpTxt  = "—";
+                    Double  tdcpDelta = null;
+                    Double  tdcpRate  = null;
+
+                    if ((m.getAccumulatedDeltaRangeState()
+                            & android.location.GnssMeasurement.ADR_STATE_VALID) != 0) {
+                        final double adrNow = m.getAccumulatedDeltaRangeMeters();
+                        final Long   lastT  = lastAdrEpochNs.get(svid);
+                        final Double lastA  = lastAdrMeters.get(svid);
+
+                        if (lastT != null && lastA != null) {
+                            long adrDtNs = tRxNanos - lastT;     // NOTE: new variable name → avoid shadowing dtNs
+                            if (adrDtNs > 0) {
+                                double dMeters = adrNow - lastA; // Δrange (m) over this epoch
+                                double rateMps = dMeters / (adrDtNs * 1e-9);
+                                tdcpTxt   = String.format(Locale.US, "Δ=%.3f m  rate=%.3f m/s", dMeters, rateMps);
+                                tdcpDelta = dMeters;
+                                tdcpRate  = rateMps;
+                            }
+                        }
+
+                        // Update state for this SV
+                        lastAdrEpochNs.put(svid, tRxNanos);
+                        lastAdrMeters.put(svid, adrNow);
+                    } else {
+                        // ADR invalid / reset → clear state so next valid epoch starts fresh
+                        lastAdrEpochNs.remove(svid);
+                        lastAdrMeters.remove(svid);
+                    }
+
+                    // UI line for this SV
+                    ui.append(String.format(Locale.US,
+                            "SV %d (C=%d)  PR=%.3f m  TDCP=%s\n", svid, constel, prMeters, tdcpTxt));
+
+                    // Structured callback for logging (per-SV)
+                    sink.onGnssPrTdcp(constel, svid, prMeters, tdcpDelta, tdcpRate, tElapsedNs);
                 }
 
-                ui.append(String.format(Locale.US,
-                        "SV %d (C=%d)  PR=%.3f m  TDCP=%s\n", svid, constel, prMeters, tdcpTxt));
-                // For testing:
-                    // ui.append(String.format(Locale.US,
-                           // "TDCP=%s\n", tdcpTxt));
-                sink.onGnssPrTdcp(constel, svid, prMeters, tdcpDelta, tdcpRate, tElapsedNs);
+                final String uiText = (ui.length() == 0) ? "No raw GNSS this epoch" : ui.toString();
+                sink.onGnssEpoch(uiText, tElapsedNs);
             }
-
-            final String uiText = ui.length() == 0 ? "No raw GNSS this epoch" : ui.toString();
-
-
-            sink.onGnssEpoch(uiText, tElapsedNs);
-
-        }
-
-        @Override public void onStatusChanged(int status) { /* optional, tbd */ }
+            @Override public void onStatusChanged(int status) { /* optional, tbd */ }
     };
 }
 
