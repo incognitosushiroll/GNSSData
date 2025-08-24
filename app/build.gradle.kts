@@ -57,4 +57,6 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    implementation(files("libs/lcm.jar")) // needed for lcm wrapping and aspn formatting
+    implementation(files("libs/aspn_messages.jar")) //aspn jar file downloaded from gitlab
 }

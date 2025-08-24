@@ -103,6 +103,10 @@ public class MainActivity extends AppCompatActivity {
     private Float lastAx = null, lastAy = null, lastAz = null;
     private Float lastGx = null, lastGy = null, lastGz = null;
 
+    // For aspn and lcm
+    private LcmAspnBridge aspn;
+    private AspnCsvLogger aspnCsv;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -113,6 +117,10 @@ public class MainActivity extends AppCompatActivity {
         tvGyro   = findViewById(R.id.value_gyro);
         tvGnss   = findViewById(R.id.value_gnss);
         tvStatus = findViewById(R.id.value_status);
+        // For aspn and lcm
+        aspnCsv = new AspnCsvLogger(getApplicationContext());
+        aspn    = new LcmAspnBridge(getApplicationContext(), aspnCsv);
+
 
         // Create our listener and implement the Sink inline.
         // This is an “anonymous class” — a common Java pattern where we implement an interface on the fly.
@@ -183,8 +191,8 @@ public class MainActivity extends AppCompatActivity {
 
         });
         //First-run helpful text based on hardware availability (emulators often lack sensors)
-        tvBaro.setText(listener.hasBarometer()    ? getString(R.string.waiting_sensor) : getString(R.string.no_baro));
-        tvAccel.setText(listener.hasAccelerometer()? getString(R.string.waiting_sensor) : "No accelerometer.");
+        tvBaro.setText(listener.hasBarometer() ? getString(R.string.waiting_sensor) : getString(R.string.no_baro));
+        tvAccel.setText(listener.hasAccelerometer() ? getString(R.string.waiting_sensor) : "No accelerometer.");
         tvGyro.setText(listener.hasGyroscope()    ? getString(R.string.waiting_sensor) : "No gyroscope.");
         tvGnss.setText(getString(R.string.gnss_waiting));
 
@@ -201,6 +209,7 @@ public class MainActivity extends AppCompatActivity {
     @RequiresPermission(anyOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override protected void onResume() {
         super.onResume();
+        if (aspn != null) aspn.start();
         listener.start();
     }
 
@@ -208,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onPause() {
         super.onPause();
         if (listener != null) listener.stop();
+        if (aspn != null) aspn.stop();
     }
     // Close the logger
     @Override
