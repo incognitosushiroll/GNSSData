@@ -14,9 +14,9 @@ Tools used for project:
 4. Used a .java file instead of a Kotlin file (deleted)
 
 Files included:
-- SensorListener.java
-- EventLogger.java
-- MainActivity.java
+- SensorGnssListener.java    (collects sensors + GNSS and calls back into this Activity)
+- LcmApsnBridge.java         (turns our data into ASPN messages and publishes over LCM)
+- MainActivity.java          (this file)
 
 FOUR Desired GPS Measurements:
 1. Barometer pressure
@@ -65,6 +65,7 @@ Java concepts - for new programmer:
 - Java "generics" (e.g. Map<Integer, Double>) capture the type parameters for safety.
 - Runtime permissions are used on any Android 6+ in order for us to access user location before GNSS capture.
  */
+
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -77,66 +78,114 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import androidx.core.content.FileProvider;
-import android.content.Intent;
-import android.net.Uri;
-
 import java.util.Locale;
 
+import aspn23_lcm.measurement_IMU;
+import aspn23_lcm.measurement_barometer;
+import aspn23_lcm.measurement_satnav_with_sv_data;
 
 public class MainActivity extends AppCompatActivity {
-// "static final" are compile-time constants (immutable, one per class)
+    // "static final" are compile-time constants (immutable, one per class)
     private static final String TAG = "GNSData-Main";
     private static final int REQ_LOC = 42; // request code for permission dialog above, aka "get the OK"
-
 
     // UI references TextView and implements "fields" so all methods in this class can access/update them
     private TextView tvBaro, tvAccel, tvGyro, tvGnss, tvStatus;
 
-    //Our listener created from SensorGnssListener.java
+    // Our listener created from SensorGnssListener.java (collects sensors + GNSS)
     private SensorGnssListener listener;
-    // Our logger created from SheetLogger.java
+
+    //Time to log stuff
     private SheetLogger sheetLogger;
 
-    // last-known values so we can write a *wide*, fully populated row each time
+    // Our bridge to ASPN/LCM (publishes messages + gives us human-readable summaries)
+    private LcmAspnBridge aspn;
+
+    // We’ll build one SATNAV epoch per GNSS callback burst:
+    private LcmAspnBridge.EpochBuilder currentEpoch = null;
+
+    // last-known values so we can publish IMU anytime (the bridge does S/H throttling internally)
     private Float lastBaro = null;
     private Float lastAx = null, lastAy = null, lastAz = null;
     private Float lastGx = null, lastGy = null, lastGz = null;
 
+    // === Activity lifecycle: called once when the Activity is created
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // inflate (or "bind") XML to live views
-        //Wire the views by ID (must match the IDs in activity_main.xml
+        // Java's way of loading ("inflating") the XML layout into a live view hierarchy
+        setContentView(R.layout.activity_main);
+
+        // Find (or "bind") our tv references by their ID as defined in the XML
         tvBaro   = findViewById(R.id.value_baro);
         tvAccel  = findViewById(R.id.value_accel);
         tvGyro   = findViewById(R.id.value_gyro);
         tvGnss   = findViewById(R.id.value_gnss);
         tvStatus = findViewById(R.id.value_status);
 
-        // Create our listener and implement the Sink inline.
-        // This is an “anonymous class” — a common Java pattern where we implement an interface on the fly.
+        // Init CSV logger (Excel-friendly delimiter + BOM for UTF-8)
+        char delim = SheetLogger.defaultExcelDelimiterForLocale();
+        sheetLogger = SheetLogger.atExternal(getApplicationContext(), delim, true);
+        sheetLogger.ensureHeaders();
+        tvStatus.setText(String.format(Locale.US,
+                "Sensors: %s\nGNSS: %s\nASPN IMU: %s\nASPN Baro: %s\nASPN Satnav: %s",
+                sheetLogger.sensorsPath(), sheetLogger.gnssPath(),
+                sheetLogger.aspnImuPath(), sheetLogger.aspnBaroPath(), sheetLogger.aspnSatnavPath()));
+
+
+        // Create the ASPN/LCM bridge. We pass "this" (the Activity) as Context — it’s valid here.
+        aspn = new LcmAspnBridge(this, new LcmAspnBridge.Listener() {
+            @Override public void onAspnImuPublished(measurement_IMU msg, String line) {
+                // Show a compact IMU summary line in the status area
+                runOnUiThread(() -> tvStatus.setText(line));
+                if (sheetLogger != null) sheetLogger.logAspnImu(msg);
+
+            }
+            @Override public void onAspnBarometerPublished(measurement_barometer msg, String line) {
+                // Replace status line with baro summary (you can also append if you prefer)
+                runOnUiThread(() -> tvStatus.setText(line));
+                if (sheetLogger != null) sheetLogger.logAspnBarometer(msg);
+            }
+            @Override public void onAspnSatnavPublished(measurement_satnav_with_sv_data msg, String block) {
+                // Show SATNAV epoch summary (count + a few SV rows)
+                runOnUiThread(() -> tvStatus.setText(block));
+                if (sheetLogger != null) sheetLogger.logAspnSatnav(msg);
+            }
+        });
+
+        // Create our sensor+gnss listener and implement the Sink inline (anonymous class).
+        // This is where *phone hardware* measurements get turned into both UI text and ASPN messages.
         listener = new SensorGnssListener(getApplicationContext(), new SensorGnssListener.Sink() {
             @Override
             public void onBarometer(float hPa, long tElapsedNs) {
-                tvBaro.setText(String.format(Locale.US, "%.2f hPa", hPa));
+                // UI (always push UI updates from the main thread):
+                runOnUiThread(() -> tvBaro.setText(String.format(Locale.US, "%.2f hPa", hPa)));
+                // Remember our last value (not strictly required here since LcmApsnBridge publishes directly)
                 lastBaro = hPa;
+                // ASPN publish (bridge converts hPa -> Pa internally and publishes):
+                if (aspn != null) aspn.publishBarometer(hPa, 0.0 /* variance Pa^2, unknown so 0 */);
 
+                // Put RAW data into wide sensor row in csv
                 long now = System.currentTimeMillis();
                 if (sheetLogger != null) {
-                    // Write one WIDE row every time a sensor updates (sample-and-hold for others)
                     sheetLogger.logSensorsWide(now, tElapsedNs,
                             lastBaro,
                             lastAx, lastAy, lastAz,
                             lastGx, lastGy, lastGz);
                 }
             }
+            @Override
+            public void onAspnBarometerPublished(measurement_barometer msg, String line) {
+                if (sheetLogger != null) sheetLogger.logAspnBarometer(msg);
+            }
 
             @Override
             public void onAccel(float ax, float ay, float az, long tElapsedNs) {
-                tvAccel.setText(String.format(Locale.US, "x=%.2f  y=%.2f  z=%.2f m/s²", ax, ay, az));
+                runOnUiThread(() ->
+                        tvAccel.setText(String.format(Locale.US, "x=%.2f  y=%.2f  z=%.2f m/s²", ax, ay, az)));
                 lastAx = ax; lastAy = ay; lastAz = az;
-
+                if (aspn != null) aspn.onAccel(ax, ay, az); // Bridge sample-and-hold will publish at ~50 Hz
+                // RAW wide sensor row
                 long now = System.currentTimeMillis();
                 if (sheetLogger != null) {
                     sheetLogger.logSensorsWide(now, tElapsedNs,
@@ -148,9 +197,11 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onGyro(float gx, float gy, float gz, long tElapsedNs) {
-                tvGyro.setText(String.format(Locale.US, "x=%.3f  y=%.3f  z=%.3f rad/s", gx, gy, gz));
+                runOnUiThread(() ->
+                        tvGyro.setText(String.format(Locale.US, "x=%.3f  y=%.3f  z=%.3f rad/s", gx, gy, gz)));
                 lastGx = gx; lastGy = gy; lastGz = gz;
-
+                if (aspn != null) aspn.onGyro(gx, gy, gz); // Bridge handles rate limiting + publish
+                // RAW wide sensor row
                 long now = System.currentTimeMillis();
                 if (sheetLogger != null) {
                     sheetLogger.logSensorsWide(now, tElapsedNs,
@@ -163,6 +214,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onGnssPrTdcp(int constellation, int svid, double prMeters,
                                      Double tdcpDeltaMeters, Double tdcpRateMps, long tElapsedNs) {
+                // This is invoked once per SV in the current epoch.
+                // We lazily create an EpochBuilder the first time we see an SV for this epoch.
+                if (aspn != null) {
+                    if (currentEpoch == null) currentEpoch = aspn.newSatnavEpoch();
+                    currentEpoch.addSv(constellation, svid, prMeters, tdcpDeltaMeters, tdcpRateMps);
+                }
+                // Note: UI per-SV lines are built inside SensorGnssListener and delivered via onGnssEpoch(..) below.
+                // put RAW per-SV GNSS data into csv
                 long now = System.currentTimeMillis();
                 if (sheetLogger != null) {
                     sheetLogger.logGnssPerSv(now, tElapsedNs, constellation, svid,
@@ -172,51 +231,48 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onGnssEpoch(String multiLineText, long tElapsedNs) {
-                tvGnss.setText(multiLineText); // UI only; logging is per-SV above
+                // Show the per-SV multi-line text the phone just collected for this epoch
+                runOnUiThread(() -> tvGnss.setText(multiLineText));
+
+                // Publish the full ASPN SATNAV message once per epoch (then clear builder)
+                if (currentEpoch != null) {
+                    currentEpoch.publish();
+                    currentEpoch = null;
+                }
             }
 
             @Override
             public void onStatus(String statusText) {
-                tvStatus.setText(statusText);
+                runOnUiThread(() -> tvStatus.setText(statusText));
             }
-
-
         });
-        //First-run helpful text based on hardware availability (emulators often lack sensors)
-        tvBaro.setText(listener.hasBarometer()    ? getString(R.string.waiting_sensor) : getString(R.string.no_baro));
+
+        // First-run helpful text based on hardware availability (emulators often lack sensors)
+        tvBaro.setText(listener.hasBarometer()     ? getString(R.string.waiting_sensor) : getString(R.string.no_baro));
         tvAccel.setText(listener.hasAccelerometer()? getString(R.string.waiting_sensor) : "No accelerometer.");
-        tvGyro.setText(listener.hasGyroscope()    ? getString(R.string.waiting_sensor) : "No gyroscope.");
+        tvGyro.setText(listener.hasGyroscope()     ? getString(R.string.waiting_sensor) : "No gyroscope.");
         tvGnss.setText(getString(R.string.gnss_waiting));
 
-        //creating our logger and headers to write to
-        char delim = SheetLogger.defaultExcelDelimiterForLocale();
-        sheetLogger = SheetLogger.atExternal(getApplicationContext(), delim, true /*BOM*/);
-        tvStatus.setText(String.format("Sensors: %s\nGNSS: %s", sheetLogger.sensorsPath(), sheetLogger.gnssPath()));
-        sheetLogger.ensureHeaders(); // <- safe no-op if already present
         // Kick off runtime permission flow for GNSS
         ensureLocationPermission();
     }
 
-    // onResume makes the Activity visible and starts listening for sensors
+    // === Activity lifecycle: visible → start listening / publishing
     @RequiresPermission(anyOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override protected void onResume() {
         super.onResume();
-        listener.start();
+        if (aspn != null) aspn.start();   // Acquire multicast lock + init LCM (if available)
+        if (listener != null) listener.start(); // Start sensors + GNSS callbacks
     }
 
-    // onPause stops listening for sensors
+    // === Activity lifecycle: going background → stop listening / publishing
     @Override protected void onPause() {
         super.onPause();
         if (listener != null) listener.stop();
-    }
-    // Close the logger
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (sheetLogger != null) sheetLogger.close();
+        if (aspn != null) aspn.stop();    // Release multicast lock
     }
 
-    // This permission helper requests at runtime on Android 6+ if need to get permissions
+    // === Permissions helper: requests at runtime on Android 6+ so GNSS raw can be registered
     private void ensureLocationPermission() {
         boolean fineGranted =
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -253,7 +309,6 @@ public class MainActivity extends AppCompatActivity {
             if (listener != null) listener.start();
         }
     }
-
 
     // === Callback from permission dialog ===
     @Override

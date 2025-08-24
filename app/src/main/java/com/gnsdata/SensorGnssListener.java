@@ -32,6 +32,8 @@ import java.util.HashMap; // Java "collections - hash table map
 import java.util.Locale; // for String.format
 import java.util.Map;
 
+import aspn23_lcm.measurement_barometer;
+
 public class SensorGnssListener implements SensorEventListener {
     // Constants, constrained at compiletime, immutable
     private static final String TAG = "GNSData-Listener";
@@ -61,6 +63,9 @@ public class SensorGnssListener implements SensorEventListener {
     // "Sink" is our output callback to the Activity
     public interface Sink {
         void onBarometer(float hPa, long tElapsedNs);
+
+        void onAspnBarometerPublished(measurement_barometer msg, String line);
+
         void onAccel(float ax, float ay, float az, long tElapsedNs);
         void onGyro(float gx, float gy, float gz, long tElapsedNs);
         void onGnssEpoch(String multiLineText, long tElapsedNs);
