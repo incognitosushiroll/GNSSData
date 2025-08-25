@@ -1,7 +1,7 @@
 package com.gnsdata;
 /*
 Created by: Katki
-Date: 08/14 - 08/22
+Date: 08/14 - 08/25
 Github: https://github.com/incognitosushiroll/GNSSData.git
 
 This java file is part of the GNSSData project. ChatGPT was used to help design the files in "res", "androidmanifest.xml", and any files that helped paint style.

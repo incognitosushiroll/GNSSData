@@ -1,17 +1,19 @@
 package com.gnsdata;
 
 /*
- * LcmApsnBridge.java
- *
- * Purpose:
- *  - Convert phone sensor/GNSS data into ASPN message objects
- *  - Publish them on LCM channels
- *  - Provide human-readable summaries via a Listener so UI can display them
- *
- * Notes:
- *  - Uses aspn_messages.jar generated classes (aspn23_lcm.*)
- *  - Uses lcm.jar (LCM transport)
- *  - Timestamps use elapsedRealtimeNanos() to match sensor/GNSS monotonic time
+Created by: Katki
+Date: 08/14 - 08/25
+Github: https://github.com/incognitosushiroll/GNSSData.git
+
+This LcmApsnBridge.java will:
+   - Convert phone sensor/GNSS data into ASPN message objects
+   - Publish them on LCM channels
+   - Provide human-readable summaries via a Listener so UI can display them
+
+ Notes:
+  - Uses aspn_messages.jar generated classes (aspn23_lcm.*) --> this you need creds to the aspn git lab in order to download.
+  - Uses lcm.jar (LCM transport) --> this was downloaded on a Linux system. If you are running this on Windows, quit a bit of set-up is needed to install liblcm-dev package.
+  - Timestamps use elapsedRealtimeNanos() to match sensor/GNSS monotonic time - math involved here, references in MainActivity.java should help
  */
 
 import android.content.Context;

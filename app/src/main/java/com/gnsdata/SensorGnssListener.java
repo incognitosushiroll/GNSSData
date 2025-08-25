@@ -1,7 +1,7 @@
 package com.gnsdata;
 /*
 Created by: Katki
-Date: 08/14 - 08/22
+Date: 08/14 - 08/25
 Github: https://github.com/incognitosushiroll/GNSSData.git
 
 This file within the GNDSSData project uses an interface to handle callbacks used to pass the data back to MainActivity.java.

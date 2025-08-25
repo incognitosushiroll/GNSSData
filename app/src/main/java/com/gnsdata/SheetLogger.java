@@ -1,13 +1,15 @@
 package com.gnsdata;
 /*
 Created by: Katki
-Date: 08/14 - 08/22
+Date: 08/14 - 08/25
 Github: https://github.com/incognitosushiroll/GNSSData.git
 
 This file within the GNSSData project will write to an android's external files directory (Files app).
 This class is one tiny thread for writing the GNSS data to a .csv file.
 
-Updated: adds ASPN logging (IMU, Baro, Satnav) alongside the original RAW logs.
+Updated: adds ASPN logging (IMU, Baro, Satnav) alongside the original RAW logs. "RAW" data is the data off the phone. "ASPN data" is the data put through the lcm in aspn format.
+
+The csv formatting portions were input from ChatGPT - I take no credit for the formatting and csv writers within the logs.
 */
 
 import android.content.Context;
@@ -59,8 +61,8 @@ public class SheetLogger {
     private Writer aspnBaroWriter;
     private Writer aspnSatnavWriter;
 
-    private final char delimiter;
-    private final boolean writeBomOnEmpty;
+    private final char delimiter; // needed for comma-split values
+    private final boolean writeBomOnEmpty; // friendly for excel
 
     // Thread-safe date/time formatters (we create fresh ones per each call bc SimpleDateFormat isn’t thread-safe).
     private static String fmtDate(long wallMs) {
@@ -181,7 +183,7 @@ public class SheetLogger {
         );
     }
 
-    // GNSS row per satellite per epoch. If tdcpMeters / tdcpRate are null (when ADR not valid yet) we write blank cells.
+    // GNSS row per satellite per epoch, logged and written to log
     public synchronized void logGnssPerSv(
             long wallMs, long elapsedNs,
             int constellation, int svid,
@@ -212,7 +214,7 @@ public class SheetLogger {
                 "Gyro_X_radps","Gyro_Y_radps","Gyro_Z_radps");
     }
 
-    /** Log the ASPN IMU message we published (accel/gyro arrays). */
+    // Log the ASPN IMU message we published (which has both accel/gyro arrays)
     public synchronized void logAspnImu(measurement_IMU msg) {
         if (aspnImuWriter == null || msg == null) return;
         long nowMs = System.currentTimeMillis();
@@ -237,7 +239,7 @@ public class SheetLogger {
                 "Pressure_Pa","Variance_Pa2");
     }
 
-    /** Log the ASPN Barometer message (pressure Pa + variance). */
+    // Log the ASPN Barometer message (pressure Pa + variance).
     public synchronized void logAspnBarometer(measurement_barometer msg) {
         if (aspnBaroWriter == null || msg == null) return;
         long nowMs = System.currentTimeMillis();
@@ -258,7 +260,7 @@ public class SheetLogger {
                 "Pseudorange_m","TDCP_m","TDCP_rate_mps");
     }
 
-    /** Log the ASPN Satnav epoch: explode arrays into per-SV rows. */
+    // Log the ASPN Satnav epoch: explode arrays into per-SV rows.
     public synchronized void logAspnSatnav(measurement_satnav_with_sv_data msg) {
         if (aspnSatnavWriter == null || msg == null) return;
         long nowMs = System.currentTimeMillis();
@@ -278,7 +280,7 @@ public class SheetLogger {
                     new String[]{"system","satellite_system","id","constellation","constellation_id","gnss_id"});
             if (systemCode == null) systemCode = 0;
 
-            // svid/prn (prefer sv_data.prn)
+            // svid/prn (prefer sv_data.prn); note that "prn" is a variable for pseudorange used within the aspn_messages.jar classes
             Integer svid = (s != null) ? (int) s.prn : readIntLike(o, new String[]{"svid","sv_id","prn","satellite_id"});
             if (svid == null) svid = -1;
 
@@ -294,7 +296,7 @@ public class SheetLogger {
         }
     }
 
-    // ===================== CSV glue (unchanged style) =====================
+    // CSV glue
 
     private void writeRow(Writer w, Object... fields) {
         if (w == null) return;
@@ -338,6 +340,7 @@ public class SheetLogger {
         writeAspnBaroHeaderIfEmpty();
         writeAspnSatnavHeaderIfEmpty();
     }
+    // getting the correct format...
 
     private static String toCsv(Float f)  { return f == null ? "" : String.format(Locale.US, "%.6f", f); }
     private static String toCsv(Double d) { return d == null ? "" : String.format(Locale.US, "%.9f", d); }
@@ -378,7 +381,7 @@ public class SheetLogger {
         return null;
     }
 
-    // And we take a bow
+    // Graceful exit for this chunky beast
     public synchronized void close() {
         try { if (sensorsWriter    != null) sensorsWriter.close();    } catch (IOException ignored) {}
         try { if (gnssWriter       != null) gnssWriter.close();       } catch (IOException ignored) {}
