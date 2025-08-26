@@ -79,8 +79,8 @@ Because this app was first tested on a Google Pixel 6, the logs were found in Fi
 - "aspn.lcmlog" : contains the published aspn data using the lcm.logging class from the lcm.jar
 
 # NOTE: 
-***The phone you are using for development will need to be connected to WiFi to retrieve GNSS data*** 
-***Never let the app run for extended periods of time. Always close and swipe out of the app in the background. It is a wise idea to implement a time-based shut-off function so that if you use this app on your personal device (not recommend, please use an emulator or test device) you won't brick the device. Thanks!***
+- ***The phone you are using for development will need to be connected to WiFi to retrieve GNSS data*** 
+- ***Never let the app run for extended periods of time. Always close and swipe out of the app in the background. It is a wise idea to implement a time-based shut-off function so that if you use this app on your personal device (not recommend, please use an emulator or test device) you won't brick the device. Thanks!***
 
 # Sources 
 - GNSLogger repo for understanding set-up and logic for this repo: https://github.com/google/gps-measurement-tools
