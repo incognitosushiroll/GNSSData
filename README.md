@@ -10,7 +10,6 @@ The "detached" branch contains code for an Android application that will still d
 1. Install lcm.jar following the steps here: https://lcm-proj.github.io/lcm/content/install-instructions.html#installing-lcm (note that I did this development on an Ubuntu system, Windows system set-up for lcm.jar wasn't friendly). 
 2. Download the "aspn_messages.jar" file from aspn - you will need an account through your org's aspn admin. 
 3. Download the newest version of Android Studio for SDK development: https://developer.android.com/studio 
-***The phone you are using for development will need to be connected to WiFi to retrieve GNSS data***
 
 
 # Background 
@@ -21,7 +20,7 @@ This project aims to 1) perform GPS Data gleaning and logging methods, and 2) te
 # Tools used for project:
 1. Github repo
 2. Android Studio
-3. Google pixel phone + USB cable and Pixel 9 emulator
+3. Google pixel phone + USB cable and Pixel 9 emulator (RECOMMENDED TO ONLY USE TEST DEVICES, NOT PERSONAL ONES) 
 4. Used a .java file instead of a Kotlin file (deleted)
 5. aspn_messages.jar and lcm.jar 
 6. Android Studio's built-in Gemini for code debugging 
@@ -73,13 +72,15 @@ This project aims to 1) perform GPS Data gleaning and logging methods, and 2) te
                         IRNSS = 7
                     Note: GPS Epoch is a continuous time system for all satellites and observation systems. It is represented in seconds since Jan 6, 1980 at 00:00:00 UTC.
 
-
-
 # Logs 
 Because this app was first tested on a Google Pixel 6, the logs were found in Files > system traces> Android > tap the hamburger in top left > Google Pixel 6 > Android > data > com.gnsdata > files > logs 
 - "gnss_log.csv" : contains all satnav data, which includes date/time, satellite constellation, satellite vehicle number, pseudorange, and tdcp 
 - "sensors_log.csv" : contains all barometer, accel, and gyro information. 
-- "aspn.lcmlog" : contains the published aspn data using the lcm.logging class from the lcm.jar 
+- "aspn.lcmlog" : contains the published aspn data using the lcm.logging class from the lcm.jar
+
+# NOTE: 
+***The phone you are using for development will need to be connected to WiFi to retrieve GNSS data*** 
+***Never let the app run for extended periods of time. Always close and swipe out of the app in the background. It is a wise idea to implement a time-based shut-off function so that if you use this app on your personal device (not recommend, please use an emulator or test device) you won't brick the device. Thanks!***
 
 # Sources 
 - GNSLogger repo for understanding set-up and logic for this repo: https://github.com/google/gps-measurement-tools
