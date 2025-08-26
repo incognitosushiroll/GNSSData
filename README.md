@@ -10,6 +10,8 @@ The "detached" branch contains code for an Android application that will still d
 1. Install lcm.jar following the steps here: https://lcm-proj.github.io/lcm/content/install-instructions.html#installing-lcm (note that I did this development on an Ubuntu system, Windows system set-up for lcm.jar wasn't friendly). 
 2. Download the "aspn_messages.jar" file from aspn - you will need an account through your org's aspn admin. 
 3. Download the newest version of Android Studio for SDK development: https://developer.android.com/studio 
+***The phone you are using for development will need to be connected to WiFi to retrieve GNSS data***
+
 
 # Background 
 
