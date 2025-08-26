@@ -56,6 +56,7 @@ FOUR Desired GPS Measurements:
                         Beidou = 5
                         Galileo = 6
                         IRNSS = 7
+                    Note: GPS Epoch is a continuous time system for all satellites and observation systems. It is represented in seconds since Jan 6, 1980 at 00:00:00 UTC.
 
 Java concepts - for new programmer:
 - A java "class" (this file) extends AppCompatActivity so it can be used as a screen
@@ -95,25 +96,28 @@ public class MainActivity extends AppCompatActivity {
     // Our listener created from SensorGnssListener.java (collects sensors + GNSS)
     private SensorGnssListener listener;
 
+    // for lcm logging
+    private AspnEventLogger aspnEventLogger;
     //Time to log stuff
     private SheetLogger sheetLogger;
 
     // Our bridge to ASPN/LCM (publishes messages + gives us human-readable summaries)
     private LcmAspnBridge aspn;
 
-    // We’ll build one SATNAV epoch per GNSS callback burst:
-    private LcmAspnBridge.EpochBuilder currentEpoch = null;
+    // For the inner builder class for epoch and satnav publishing
+    private com.gnsdata.LcmAspnBridge.EpochBuilder currentEpoch = null;
+    //if (currentEpoch != null) currentEpoch = aspn.newSatnavEpoch();
 
     // last-known values so we can publish IMU anytime (the bridge does S/H throttling internally)
     private Float lastBaro = null;
     private Float lastAx = null, lastAy = null, lastAz = null;
     private Float lastGx = null, lastGy = null, lastGz = null;
 
-    // === Activity lifecycle: called once when the Activity is created
+    // Activity lifecycle: called once when the Activity is created
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Java's way of loading ("inflating") the XML layout into a live view hierarchy
+        // Java's way of loading (aka "inflating") the XML layout into a live view hierarchy
         setContentView(R.layout.activity_main);
 
         // Find (or "bind") our tv references by their ID as defined in the XML
@@ -152,9 +156,17 @@ public class MainActivity extends AppCompatActivity {
                 if (sheetLogger != null) sheetLogger.logAspnSatnav(msg);
             }
         });
+        aspnEventLogger = new AspnEventLogger(getApplicationContext());
+        aspn.setEventLogger(aspnEventLogger);
+
+        // Show file paths (optional)
+        tvStatus.setText(String.format(Locale.US,
+                "Sensors: %s\nGNSS: %s\nASPN LCM: %s",
+                sheetLogger.sensorsPath(), sheetLogger.gnssPath(),
+                aspnEventLogger.logPath()));
 
         // Create our sensor+gnss listener and implement the Sink inline (anonymous class).
-        // This is where *phone hardware* measurements get turned into both UI text and ASPN messages.
+        //this is where *phone hardware* measurements get turned into both UI text and ASPN messages.
         listener = new SensorGnssListener(getApplicationContext(), new SensorGnssListener.Sink() {
             @Override
             public void onBarometer(float hPa, long tElapsedNs) {
@@ -176,7 +188,7 @@ public class MainActivity extends AppCompatActivity {
             }
             @Override
             public void onAspnBarometerPublished(measurement_barometer msg, String line) {
-                if (sheetLogger != null) sheetLogger.logAspnBarometer(msg);
+                if (sheetLogger != null) sheetLogger.logAspnBarometer(msg); // we log
             }
 
             @Override
@@ -257,22 +269,28 @@ public class MainActivity extends AppCompatActivity {
         ensureLocationPermission();
     }
 
-    // === Activity lifecycle: visible → start listening / publishing
+    // Activity lifecycle: visible → start listening / publishing
     @RequiresPermission(anyOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION})
     @Override protected void onResume() {
         super.onResume();
         if (aspn != null) aspn.start();   // Acquire multicast lock + init LCM (if available)
         if (listener != null) listener.start(); // Start sensors + GNSS callbacks
+        if (aspnEventLogger != null) aspnEventLogger.start();
+        if (aspn != null) aspn.start();
+        if (listener != null) listener.start();
     }
 
-    // === Activity lifecycle: going background → stop listening / publishing
+    // Activity lifecycle: going background → stop listening / publishing
     @Override protected void onPause() {
         super.onPause();
         if (listener != null) listener.stop();
         if (aspn != null) aspn.stop();    // Release multicast lock
+        if (listener != null) listener.stop();
+        if (aspn != null) aspn.stop();
+        if (aspnEventLogger != null) aspnEventLogger.stop();
     }
 
-    // === Permissions helper: requests at runtime on Android 6+ so GNSS raw can be registered
+    // perm helper: requests at runtime on Android 6+ so GNSS raw can be registered
     private void ensureLocationPermission() {
         boolean fineGranted =
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -296,7 +314,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Try and start the listener if we have permission ===
+    // Try and start the listener if we have perms
     private void maybeStartListener() {
         boolean fineGranted =
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -310,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // === Callback from permission dialog ===
+    // Callback from permission dialog
     @Override
     public void onRequestPermissionsResult(int requestCode,
                                            @NonNull String[] permissions,
@@ -343,4 +361,6 @@ References used for this project:
 - Pseudoranges and clock-bias correction:
     -https://web.gps.caltech.edu/classes/ge111/Docs/GPSbasics.pdf (chunky but I had ChatGPT sum up how to fix GPS constellation block bias errors in my PR calc)
 - Basic Java to csv: https://www.baeldung.com/java-csv
+- aspn.git
+- lcm documentation: https://lcm-proj.github.io/lcm/content/log-file-format.html
  */

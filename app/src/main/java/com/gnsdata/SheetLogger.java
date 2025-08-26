@@ -7,7 +7,7 @@ Github: https://github.com/incognitosushiroll/GNSSData.git
 This file within the GNSSData project will write to an android's external files directory (Files app).
 This class is one tiny thread for writing the GNSS data to a .csv file.
 
-Updated: adds ASPN logging (IMU, Baro, Satnav) alongside the original RAW logs. "RAW" data is the data off the phone. "ASPN data" is the data put through the lcm in aspn format.
+Updated: adds ASPN logging (IMU, Baro, Satnav) alongside the original RAW logs (which is commented out!). "RAW" data is the data off the phone. "ASPN data" is the data put through the lcm in aspn format.
 
 The csv formatting portions were input from ChatGPT - I take no credit for the formatting and csv writers within the logs.
 */
@@ -37,15 +37,15 @@ public class SheetLogger {
     // these are public getters (so we can show/share paths in UI)
     public File sensorsFile()   { return sensorsFile; }
     public File gnssFile()      { return gnssFile;    }
-    public File aspnImuFile()   { return aspnImuFile; }
-    public File aspnBaroFile()  { return aspnBaroFile; }
-    public File aspnSatnavFile(){ return aspnSatnavFile; }
+//    public File aspnImuFile()   { return aspnImuFile; }
+//    public File aspnBaroFile()  { return aspnBaroFile; }
+//    public File aspnSatnavFile(){ return aspnSatnavFile; }
 
     public String sensorsPath()   { return sensorsFile.getAbsolutePath(); }
     public String gnssPath()      { return gnssFile.getAbsolutePath();    }
-    public String aspnImuPath()   { return aspnImuFile.getAbsolutePath(); }
-    public String aspnBaroPath()  { return aspnBaroFile.getAbsolutePath(); }
-    public String aspnSatnavPath(){ return aspnSatnavFile.getAbsolutePath(); }
+//    public String aspnImuPath()   { return aspnImuFile.getAbsolutePath(); }
+//    public String aspnBaroPath()  { return aspnBaroFile.getAbsolutePath(); }
+//    public String aspnSatnavPath(){ return aspnSatnavFile.getAbsolutePath(); }
 
     // internal vars (RAW)
     private final File sensorsFile;
@@ -53,13 +53,13 @@ public class SheetLogger {
     private Writer sensorsWriter;
     private Writer gnssWriter;
 
-    // ASPN files + writers
-    private final File aspnImuFile;
-    private final File aspnBaroFile;
-    private final File aspnSatnavFile;
-    private Writer aspnImuWriter;
-    private Writer aspnBaroWriter;
-    private Writer aspnSatnavWriter;
+//    // ASPN files + writers
+//    private final File aspnImuFile;
+//    private final File aspnBaroFile;
+//    private final File aspnSatnavFile;
+//    private Writer aspnImuWriter;
+//    private Writer aspnBaroWriter;
+//    private Writer aspnSatnavWriter;
 
     private final char delimiter; // needed for comma-split values
     private final boolean writeBomOnEmpty; // friendly for excel
@@ -80,9 +80,9 @@ public class SheetLogger {
         return new SheetLogger(
                 new File(dir, "sensors_log.csv"),
                 new File(dir, "gnss_log.csv"),
-                new File(dir, "aspn_imu.csv"),
-                new File(dir, "aspn_baro.csv"),
-                new File(dir, "aspn_satnav.csv"),
+//                new File(dir, "aspn_imu.csv"),
+//                new File(dir, "aspn_baro.csv"),
+//                new File(dir, "aspn_satnav.csv"),
                 delimiter, bom);
     }
 
@@ -94,28 +94,28 @@ public class SheetLogger {
 
     // Constructor which has open writers and will write headers if files empty.
     private SheetLogger(File sensors, File gnss,
-                        File aspnImu, File aspnBaro, File aspnSatnav,
+                        //File aspnImu, File aspnBaro, File aspnSatnav,
                         char delimiter, boolean bom) {
         this.sensorsFile = sensors;
         this.gnssFile = gnss;
-        this.aspnImuFile = aspnImu;
-        this.aspnBaroFile = aspnBaro;
-        this.aspnSatnavFile = aspnSatnav;
+//        this.aspnImuFile = aspnImu;
+//        this.aspnBaroFile = aspnBaro;
+//        this.aspnSatnavFile = aspnSatnav;
 
         this.delimiter = delimiter;
         this.writeBomOnEmpty = bom;
 
         this.sensorsWriter = openWriter(sensors);
         this.gnssWriter    = openWriter(gnss);
-        this.aspnImuWriter   = openWriter(aspnImu);
-        this.aspnBaroWriter  = openWriter(aspnBaro);
-        this.aspnSatnavWriter= openWriter(aspnSatnav);
+//        this.aspnImuWriter   = openWriter(aspnImu);
+//        this.aspnBaroWriter  = openWriter(aspnBaro);
+//        this.aspnSatnavWriter= openWriter(aspnSatnav);
 
         writeSensorsHeaderIfEmpty();
         writeGnssHeaderIfEmpty();
-        writeAspnImuHeaderIfEmpty();
-        writeAspnBaroHeaderIfEmpty();
-        writeAspnSatnavHeaderIfEmpty();
+//        writeAspnImuHeaderIfEmpty();
+//        writeAspnBaroHeaderIfEmpty();
+//        writeAspnSatnavHeaderIfEmpty();
     }
 
     // Will open the parent file if it exists, or create a new parent file and then create output streams and writers
@@ -205,7 +205,7 @@ public class SheetLogger {
 
     // ===================== ASPN: IMU =====================
 
-    private synchronized void writeAspnImuHeaderIfEmpty() {
+    /*private synchronized void writeAspnImuHeaderIfEmpty() {
         if (aspnImuWriter == null || !isEffectivelyEmpty(aspnImuFile)) return;
         writeRow(aspnImuWriter,
                 "Date","Time","ElapsedNs",
@@ -294,7 +294,7 @@ public class SheetLogger {
                     systemCode, svid,
                     toCsv(pr), toCsv(dcp), toCsv(dcr));
         }
-    }
+    } */
 
     // CSV glue
 
@@ -336,9 +336,9 @@ public class SheetLogger {
     public synchronized void ensureHeaders() {
         writeSensorsHeaderIfEmpty();
         writeGnssHeaderIfEmpty();
-        writeAspnImuHeaderIfEmpty();
-        writeAspnBaroHeaderIfEmpty();
-        writeAspnSatnavHeaderIfEmpty();
+//        writeAspnImuHeaderIfEmpty();
+//        writeAspnBaroHeaderIfEmpty();
+//        writeAspnSatnavHeaderIfEmpty();
     }
     // getting the correct format...
 
@@ -346,7 +346,7 @@ public class SheetLogger {
     private static String toCsv(Double d) { return d == null ? "" : String.format(Locale.US, "%.9f", d); }
     private static String toCsv(double d) { return String.format(Locale.US, "%.9f", d); }
 
-    // Helpers for ASPN payloads
+    // Helpers for ASPN payloads, not used
     private static long safeElapsed(type_timestamp ts) {
         return (ts != null) ? ts.elapsed_nsec : 0L;
     }
@@ -385,13 +385,13 @@ public class SheetLogger {
     public synchronized void close() {
         try { if (sensorsWriter    != null) sensorsWriter.close();    } catch (IOException ignored) {}
         try { if (gnssWriter       != null) gnssWriter.close();       } catch (IOException ignored) {}
-        try { if (aspnImuWriter    != null) aspnImuWriter.close();    } catch (IOException ignored) {}
-        try { if (aspnBaroWriter   != null) aspnBaroWriter.close();   } catch (IOException ignored) {}
-        try { if (aspnSatnavWriter != null) aspnSatnavWriter.close(); } catch (IOException ignored) {}
+//        try { if (aspnImuWriter    != null) aspnImuWriter.close();    } catch (IOException ignored) {}
+//        try { if (aspnBaroWriter   != null) aspnBaroWriter.close();   } catch (IOException ignored) {}
+//        try { if (aspnSatnavWriter != null) aspnSatnavWriter.close(); } catch (IOException ignored) {}
         sensorsWriter = null;
         gnssWriter = null;
-        aspnImuWriter = null;
-        aspnBaroWriter = null;
-        aspnSatnavWriter = null;
+//        aspnImuWriter = null;
+//        aspnBaroWriter = null;
+//        aspnSatnavWriter = null;
     }
 }
